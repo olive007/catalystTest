@@ -62,5 +62,10 @@ then
 	unitTestFailed "file with wrong data"
 fi
 
+errorMsg=`php user_upload.php --file csvForTest/wrongEmail.csv 2>&1 >/dev/null`
+if [ $? != 3 ] || [ "$errorMsg" != "Error: this addr: 'jsmith@gmail' is not correct" ]
+then
+	unitTestFailed "file with wrong email"
+fi
 
 exit 0;

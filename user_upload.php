@@ -38,6 +38,10 @@ $alterTable = true;
 $mysql['username'] = "root";
 $mysql['password'] = "";
 $mysql['hostname'] = "127.0.0.1";
+$data = [];
+$data['name'] = [];
+$data['surname'] = [];
+$data['email'] = [];
 
 #######################
 # Check the arguments #
@@ -125,6 +129,11 @@ if (array_key_exists('h', $arguments)) {
 	$mysql['hostname'] = $arguments['h'];
 }
 
+
+############################
+# OPENING AND READING FILE #
+############################
+
 # Open the file in read only mode
 $fd = fopen($filename, "r");
 
@@ -135,13 +144,15 @@ if (!$fd) {
 	exit(FILE_ERROR_EXIT);
 }
 
+# Get the first row of data (csv header)
 $columnName = fgetcsv($fd);
-if (gettype($columnName) != 'array' || count($columnName) <= 3) {
+if (gettype($columnName) != 'array') {
 
 	printError("$filename doesn't have correct data");
 	exit(FILE_ERROR_EXIT);
 }
 
+# Get the right column index
 for ($i = count($columnName); --$i >= 0;) {
 	$columnName[$i] = strtolower(trim($columnName[$i]));
 
@@ -157,17 +168,13 @@ for ($i = count($columnName); --$i >= 0;) {
 	}
 }
 
+# Check if we have the 3 columns mandatory (name, surname, email)
 if (!isset($nameIndex) || !isset($surnameIndex) || !isset($emailIndex)) {
 	printError("$filename doesn't have correct data");
 	exit(FILE_ERROR_EXIT);
 }
 
-$row = 0;
-$data = [];
-$data['name'] = [];
-$data['surname'] = [];
-$data['email'] = [];
-
+# Create function table to format data
 $formatData = [];
 
 $formatData['name'] = function($name) {
@@ -179,6 +186,7 @@ $formatData['surname'] = function($surname) {
 $formatData['email'] = function($email) {
 	$email = strtolower(trim($email));
 
+	# Check if the email is correct
 	if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
 		printError("this addr: '$email' is not correct\n");
 		exit(EMAIL_ERROR_EXIT);
@@ -187,14 +195,25 @@ $formatData['email'] = function($email) {
 	return $email;
 };
 
-
+# Parse CSV file and increament data table
 while (($buffer = fgetcsv($fd)) !== FALSE) {
 	array_push($data['name'],    $formatData['name']($buffer[$nameIndex]));
 	array_push($data['surname'], $formatData['surname']($buffer[$surnameIndex]));
 	array_push($data['email'],   $formatData['email']($buffer[$emailIndex]));
 }
 
+# close the file
 fclose($fd);
+
+if (!alterTable) {
+	# Stop the script without error and without changing the database
+	exit(SUCCESS_EXIT);
+}
+
+##########################
+# CONNECTION TO DATABASE #
+##########################
+
 
 var_dump($data);
 
