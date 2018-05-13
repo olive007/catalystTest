@@ -1,10 +1,13 @@
+#!/usr/bin/env php 
 <?php
 
 # Exit Code
 const SUCCESS_EXIT = 0;
 const ARGUMENT_ERROR_EXIT = 1;
 const FILE_ERROR_EXIT = 2;
-const EMAIL_ERROR_EXIT = 3;
+const DATA_ERROR_EXIT = 3;
+const SQL_ERROR_EXIT = 4;
+const TABLE_NAME = "user";
 
 # Remove php error and warning message
 error_reporting(NULL);
@@ -35,13 +38,11 @@ $arguments = getopt($shortOptions, $longOptions);
 ########################
 $filename = "users.csv"; # Default filename
 $alterTable = true;
-$mysql['username'] = "root";
-$mysql['password'] = "";
-$mysql['hostname'] = "127.0.0.1";
+$mysql['username'] = "catalyst";
+$mysql['password'] = "test";
+$mysql['hostname'] = "192.168.56.2";
+$mysql['databaseName'] = "catalyst";
 $data = [];
-$data['name'] = [];
-$data['surname'] = [];
-$data['email'] = [];
 
 #######################
 # Check the arguments #
@@ -50,39 +51,9 @@ $data['email'] = [];
 if (array_key_exists('help', $arguments)) {
 	# Display the help
 
-	# TODO
-
+	print("Usage: php user_upload.php [--dry_run] [--create_table] [--file filename] [--help] [-u MySQL user] [-p MySQL password] [-h MySQL database]\n");
 	# Stop the script without error
 	exit(SUCCESS_EXIT);
-}
-
-# Check if we have to create SQL table
-if (array_key_exists('create_table', $arguments)) {
-	# Create the MySQL table because the option is specified
-
-	# TODO
-
-	# Stop the script without error
-	exit(SUCCESS_EXIT);
-}
-
-# Check if we are ruuning the script in dry mode. That's mind we won't change the datebase.
-if (array_key_exists('dry_run', $arguments)) {
-	$alterTable = false;
-}
-
-# Check if we specified an other filename.
-if (array_key_exists('file', $arguments)) {
-
-	# Check if we are running the script with several 'file' option
-	if (gettype($arguments['file']) != 'string') {
-
-		printError("multiple filename specified");
-		# Stop the script with error
-		exit (ARGUMENT_ERROR_EXIT);
-	}
-	# Change the filename
-	$filename = $arguments['file'];
 }
 
 # Check if we specified an other MySQL username
@@ -99,7 +70,6 @@ if (array_key_exists('u', $arguments)) {
 	$mysql['username'] = $arguments['u'];
 }
 
-
 # Check if we specified an other MySQL hostname
 if (array_key_exists('p', $arguments)) {
 
@@ -113,7 +83,6 @@ if (array_key_exists('p', $arguments)) {
 	# Change the filename
 	$mysql['password'] = $arguments['p'];
 }
-
 
 # Check if we specified an other MySQL hostname
 if (array_key_exists('h', $arguments)) {
@@ -129,6 +98,64 @@ if (array_key_exists('h', $arguments)) {
 	$mysql['hostname'] = $arguments['h'];
 }
 
+# Check if we are ruuning the script in dry mode. That's mind we won't change the datebase.
+if (array_key_exists('dry_run', $arguments)) {
+	$alterTable = false;
+}
+
+# Check if we have to create SQL table
+if (array_key_exists('create_table', $arguments)) {
+	# Create the MySQL table because the option is specified
+
+	$sqlConnection = pdoConnection();
+	$tableCreatedOrUpdated = "updated";
+
+	# SQL query which delete the table
+	$query = "DROP TABLE ".TABLE_NAME;
+	try {
+		$sqlConnection->exec($query);
+	}
+	catch (PDOException $e) {
+		if ($e->getCode() !=  "42S02") {
+			printError("SQL can't delete the '".TABLE_NAME."' table");
+			exit(SQL_ERROR_EXIT);
+		}
+		$tableCreatedOrUpdated = "created";
+	}
+
+	# SQL query which create table
+	$query = "CREATE TABLE ".TABLE_NAME." (
+		name VARCHAR(30) NOT NULL,
+		surname VARCHAR(30) NOT NULL,
+		email VARCHAR(50) NOT NULL UNIQUE
+	)";
+	try {
+		$sqlConnection->exec($query);
+	}
+	catch (PDOException $e) {
+		printError("SQL can't create the '".TABLE_NAME."' table");
+		exit(SQL_ERROR_EXIT);
+	}
+
+	printSuccess("table '".TABLE_NAME."' $tableCreatedOrUpdated");
+	# Stop the script without error
+	exit(SUCCESS_EXIT);
+}
+
+# Check if we specified an other filename.
+if (array_key_exists('file', $arguments)) {
+
+	# Check if we are running the script with several 'file' option
+	if (gettype($arguments['file']) != 'string') {
+
+		printError("multiple filename specified");
+		# Stop the script with error
+		exit (ARGUMENT_ERROR_EXIT);
+	}
+	# Change the filename
+	$filename = $arguments['file'];
+}
+
 
 ############################
 # OPENING AND READING FILE #
@@ -139,7 +166,6 @@ $fd = fopen($filename, "r");
 
 # Check the opening the file
 if (!$fd) {
-
 	printError("Can't open $filename");
 	exit(FILE_ERROR_EXIT);
 }
@@ -147,7 +173,6 @@ if (!$fd) {
 # Get the first row of data (csv header)
 $columnName = fgetcsv($fd);
 if (gettype($columnName) != 'array') {
-
 	printError("$filename doesn't have correct data");
 	exit(FILE_ERROR_EXIT);
 }
@@ -159,7 +184,6 @@ for ($i = count($columnName); --$i >= 0;) {
 	if ($columnName[$i] == "name") {
 		$nameIndex = $i;
 	}
-
 	if ($columnName[$i] == "surname") {
 		$surnameIndex = $i;
 	}
@@ -178,45 +202,62 @@ if (!isset($nameIndex) || !isset($surnameIndex) || !isset($emailIndex)) {
 $formatData = [];
 
 $formatData['name'] = function($name) {
-	return ucfirst(trim($name));
+	return addslashes(ucfirst(strtolower(trim($name))));
 };
+
 $formatData['surname'] = function($surname) {
-	return ucfirst(trim($surname));
+	return addslashes(ucfirst(strtolower(trim($surname))));
 };
+
 $formatData['email'] = function($email) {
 	$email = strtolower(trim($email));
 
 	# Check if the email is correct
-	if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-		printError("this addr: '$email' is not correct\n");
-		exit(EMAIL_ERROR_EXIT);
+	if (($res = preg_match("/^[a-zA-Z0-9\.]+@[a-zA-Z\.]+\.[a-zA-Z]{2,}$/", $email))) {
+		return $email;
 	}
-
-	return $email;
+	printError("this addr: '$email' is not correct\n");
+	exit(DATA_ERROR_EXIT);
 };
 
 # Parse CSV file and increament data table
 while (($buffer = fgetcsv($fd)) !== FALSE) {
-	array_push($data['name'],    $formatData['name']($buffer[$nameIndex]));
-	array_push($data['surname'], $formatData['surname']($buffer[$surnameIndex]));
-	array_push($data['email'],   $formatData['email']($buffer[$emailIndex]));
+	array_push($data, [
+		'name'		=> $formatData['name']($buffer[$nameIndex]),
+		'surname'	=> $formatData['surname']($buffer[$surnameIndex]),
+		'email'		=> $formatData['email']($buffer[$emailIndex]),
+	]);
 }
 
 # close the file
 fclose($fd);
 
-if (!alterTable) {
-	# Stop the script without error and without changing the database
-	exit(SUCCESS_EXIT);
+#############################
+# Insert data into database #
+#############################
+if (count($data) != 0) {
+	$sqlConnection = pdoConnection();
+
+		$query = "INSERT IGNORE INTO ".TABLE_NAME." (name, surname, email) VALUES ";
+		for ($i = count($data); --$i >= 0; ) {
+			$query .= "('".implode("', '", $data[$i])."'),";
+		}
+		$query = rtrim($query, ",");
+
+	try {
+		$res = $sqlConnection->exec($query);
+	}
+	catch(PDOException $e) {
+		printError("Connection failed: ". $e->getMessage());
+		exit(SQL_ERROR_EXIT);
+	}
+}
+else {
+	printWarning("no data into file '$filename'");
+	$res = 0;
 }
 
-##########################
-# CONNECTION TO DATABASE #
-##########################
-
-
-var_dump($data);
-
+printSuccess($res." row added into the table '".TABLE_NAME."'");
 # Stop the script without error
 exit(SUCCESS_EXIT);
 
@@ -228,4 +269,36 @@ exit(SUCCESS_EXIT);
 # Display to the user an error msg
 function printError($msg) {
 	fwrite(STDERR, "Error: ".$msg."\n");
+}
+
+# Display to the user an warning msg
+function printWarning($msg) {
+	fwrite(STDERR, "Warning: ".$msg."\n");
+}
+
+# Display to user what the script done
+function printSuccess($msg) {
+	print("Success: $msg\n");
+}
+
+function pdoConnection() {
+	global $mysql;
+	global $alterTable;
+	try {
+		# Connection to database
+		$connection = new PDO("mysql:host=$mysql[hostname];dbname=$mysql[databaseName]", $mysql['username'], $mysql['password']);
+		# set the PDO error mode to exception
+		$connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+		# Don't save change into the database if we are running the script with dry_run
+		if (!$alterTable) {
+			$connection->setAttribute(PDO::ATTR_AUTOCOMMIT, FALSE);
+		}
+	}
+	catch(PDOException $e) {
+		printError("SQL: can't connect to the database '$mysql[databaseName]' on host $mysql[hostname]");
+		exit(SQL_ERROR_EXIT);
+	}
+
+	return $connection;
 }

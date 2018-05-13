@@ -68,4 +68,23 @@ then
 	unitTestFailed "file with wrong email"
 fi
 
+errorMsg=`php user_upload.php -h none 2>&1 >/dev/null`
+if [ $? != 4 ] || [ "$errorMsg" != "Error: SQL: can't connect to the database 'catalyst' on host none" ]
+then
+	unitTestFailed "database connection"
+fi
+
+errorMsg=`php user_upload.php --file csvForTest/emptyData.csv 2>&1 >/dev/null`
+if [ $? != 0 ] || [ "$errorMsg" != "Warning: no data into file 'csvForTest/emptyData.csv'" ]
+then
+	unitTestFailed "empty data file"
+fi
+
+errorMsg=`php user_upload.php --file csvForTest/moreData.csv --dry_run`
+if [ $? != 0 ] || [[ "$errorMsg" =~ "Success: [0-9]+ row added into the table 'user'" ]]
+then
+	echo $errorMsg;
+	unitTestFailed "Test in dry mode"
+fi
+
 exit 0;
