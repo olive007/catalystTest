@@ -51,7 +51,27 @@ $data = [];
 if (array_key_exists('help', $arguments)) {
 	# Display the help
 
-	print("Usage: php user_upload.php [--dry_run] [--create_table] [--file filename] [--help] [-u MySQL user] [-p MySQL password] [-h MySQL database]\n");
+	print("Usage: php user_upload.php [OPTIONS]
+--------------------------------------------------------------------------------
+PHP script uploading user data from csv file to MySQL database
+--------------------------------------------------------------------------------
+Options:        
+  dry_run        : Don't change the data into the database
+  create_table   : Don't put data into the database
+                   Just create or update the table
+                   (default table name is 'user')
+  file filename  : Name of file which have to be parsed (default is users.csv)
+  help           : Display this help
+  u user         : MySQL user (default is catalyst)
+  p password     : MySQL password (default is test)
+  h hostname     : MySQL hostname (default is 192.168.56.2)
+--------------------------------------------------------------------------------
+Exit code:
+  0 : Success
+  2 : File error
+  3 : Data error
+  4 : SQL error
+");
 	# Stop the script without error
 	exit(SUCCESS_EXIT);
 }
